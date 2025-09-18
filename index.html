@@ -224,7 +224,18 @@
     // --- Entrées clavier ---
     window.addEventListener('keydown',(e)=>{
       if(e.key===' '||e.key==='ArrowUp'){
-        e.preventDefault(); if(game.state!=='menu'){ onPress(); }
+        e.preventDefault();
+        
+        // CORRECTION : On vérifie si on est dans le menu
+        if(game.state==='menu'){
+          // Si oui, on prépare le jeu ET on lance tout
+          game.toReady();
+          onPress(); 
+        } else {
+          // Sinon, on fait comme avant
+          onPress();
+        }
+
       } else if(e.key==='r'||e.key==='R'){
         e.preventDefault(); game.reset();
       } else if(e.key==='s'||e.key==='S'){
@@ -233,7 +244,6 @@
         e.preventDefault(); if(game.state==='menu'){ game.toReady(); } else { game.state='menu'; menuMode='home'; }
       }
     },{passive:false});
-
     // --- Souris / Touch ---
     function canvasToGame(ev){ const rect = canvas.getBoundingClientRect(); const x = (ev.clientX - rect.left) * (WIDTH / rect.width); const y = (ev.clientY - rect.top)  * (HEIGHT / rect.height); return {x,y}; }
     canvas.addEventListener('mousedown',(ev)=>{
@@ -406,6 +416,7 @@
 </script>
 </body>
 </html>
+
 
 
 
