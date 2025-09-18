@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flappy Claquette — Soda Edition</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #0e0f12; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; }
+    .frame { display: inline-block; padding: 16px; border-radius: 18px; background: radial-gradient(120% 140% at 20% 10%, #1a1c22, #0e0f12); box-shadow: 0 12px 50px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); }
+    canvas { display:block; width: 420px; height: 720px; border-radius: 14px; background: #d0ecff; box-shadow: 0 6px 18px rgba(0,0,0,.32); touch-action: manipulation; }
+    .hint { margin-top: 10px; color: #cbd5e1; font-size: 12px; text-align: center; opacity: .85; user-select: none; }
+    .hint b{ color:#fff; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <canvas id="game" width="420" height="720"></canvas>
+    <div class="hint">Espace / clic / toucher pour sauter · <b>R</b> rejouer · <b>S</b> invincible ON/OFF · <b>M</b> menu · difficulté dans le menu</div>
+  </div>
+
+  <script>
+  (() => {
+    // --- Dimensions & physiques de base ---
+    const WIDTH = 420, HEIGHT = 720;
+    const GROUND_H = 80;
+    const GRAVITY = 0.5;
+    const FLAP = -9.5;
+    const BOTTLE_W = 68;
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // HiDPI
+    function fitHiDPI(){
+      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+      canvas.width = Math.floor(WIDTH * dpr);
+      canvas.height = Math.floor(HEIGHT * dpr);
+      canvas.style.width = WIDTH + 'px';
+      canvas.style.height = HEIGHT + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    fitHiDPI();
+    window.addEventListener('resize', fitHiDPI);
+
+    // --- Couleurs ---
+    const WHITE = '#ffffff';
+    const GLASS = 'rgba(230,245,255,1)';
+    const GLASS_LINE = 'rgba(200,220,235,1)';
+
+    // UI palette
+    const UI_BG = 'rgba(17, 24, 39, 0.9)';
+    const UI_ACCENT = '#22c55e';
+    const UI_MUTED = '#94a3b8';
+
+    // --- Outils ---
+    function roundRectPath(x,y,w,h,r){
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath(); ctx.moveTo(x+rr, y);
+      ctx.arcTo(x+w, y,   x+w, y+h, rr);
+      ctx.arcTo(x+w, y+h, x,   y+h, rr);
+      ctx.arcTo(x,   y+h, x,   y,   rr);
+      ctx.arcTo(x,   y,   x+w, y,   rr);
+      ctx.closePath();
+    }
+    function centerText(text,y,size,color){
+      ctx.fillStyle = color; ctx.font = `bold ${size}px system-ui,Arial`;
+      ctx.textAlign = 'center'; ctx.fillText(text, WIDTH/2, y); ctx.textAlign = 'start';
+    }
+
+    // --- Difficultés ---
+    const DIFFS = {
+      easy:     { name:'Facile',   speed: 2.6, gapBase: 230, gapVar: 20, spacing: 380, scorePerPass: 1,  autoInvincible: true,  autoInvRad: 24 },
+      medium:   { name:'Médium',   speed: 3.2, gapBase: 170, gapVar: 40, spacing: 240, scorePerPass: 1,  autoInvincible: false, autoInvRad: 0  },
+      hardcore: { name:'Hardcore', speed: 4.8, gapBase: 160, gapVar: 35, spacing: 250, scorePerPass: 0.5, autoInvincible: false, autoInvRad: 0 }
+    };
+    const savedDiff = (localStorage.getItem('difficulty')||'medium');
+    let difficulty = ['easy','medium','hardcore'].includes(savedDiff) ? savedDiff : 'medium';
+
+    // --- Skins ---
+    const SKINS = [
+      { name:'Classique', id:'classic', strap:'#1e1e1e', foot:'#f2d3a6', sole:'#2f2f2f', style:'single' },
+      { name:'Océan', id:'ocean', strap:'#0f172a', foot:'#5eead4', sole:'#1f2937', style:'single' },
+      { name:'Lave', id:'lava', strap:'#ef4444', foot:'#fb923c', sole:'#111827', style:'single' },
+      { name:'Triple bandes', id:'triple', strap:'#111827', foot:'#e5e7eb', sole:'#111827', style:'three' },
+      { name:'Birken-like', id:'birken', strap:'#4b5563', foot:'#f1c38a', sole:'#3f3f46', style:'double' },
+      { name:'Néon', id:'neon', strap:'#22c55e', foot:'#fef08a', sole:'#0f172a', style:'single' },
+      { name:'Rose Gold', id:'rose', strap:'#f472b6', foot:'#ffe4e6', sole:'#374151', style:'single' },
+      { name:'Graphite', id:'graphite', strap:'#334155', foot:'#cbd5e1', sole:'#0b1220', style:'single' },
+      { name:'Vert Foncé', id:'darkgreen', strap:'#064e3b', foot:'#a7f3d0', sole:'#052e16', style:'single' }
+    ];
+    const savedSkin = parseInt(localStorage.getItem('skinIndex') || '0', 10);
+    let selectedSkinIndex = Number.isFinite(savedSkin) ? Math.max(0, Math.min(savedSkin, SKINS.length-1)) : 0;
+
+    // --- Sprite claquette (profil) génératif selon skin ---
+    let CLAQUETTE = null;
+    function makeClaquetteSprite(skin){
+      const {strap, foot, sole, style} = skin;
+      const w=100, h=50; // n'affecte pas la hitbox
+      const off = document.createElement('canvas'); off.width = w; off.height = h; const c = off.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      const lg = (x0,y0,x1,y1,stops)=>{ const g=c.createLinearGradient(x0,y0,x1,y1); for(const [p,col] of stops) g.addColorStop(p,col); return g; };
+      function pathSole(yBase){ c.beginPath(); c.moveTo(8, yBase); c.bezierCurveTo(20, yBase+3, 36, yBase+2, 48, yBase); c.bezierCurveTo(66, yBase-2, 82, yBase-6, 92, yBase-8); c.bezierCurveTo(96, yBase-11, 96, yBase-14, 92, yBase-16); c.lineTo(92, yBase-12); c.bezierCurveTo(70, yBase-6, 48, yBase-2, 28, yBase-1); c.bezierCurveTo(18, yBase-1, 12, yBase, 8, yBase); c.closePath(); }
+      // Outsole
+      c.fillStyle = sole; pathSole(h*0.78); c.fill();
+      // Midsole
+      c.save(); c.translate(0,-2); c.fillStyle = lg(0,h*0.7,0,h*0.9,[[0,'#ececec'],[1,'#bdbdbd']]); pathSole(h*0.78); c.fill(); c.restore();
+      // Footbed
+      c.fillStyle = foot; c.beginPath(); c.moveTo(14, h*0.55); c.bezierCurveTo(34, h*0.45, 60, h*0.46, 86, h*0.44); c.bezierCurveTo(90, h*0.44, 92, h*0.50, 90, h*0.54); c.bezierCurveTo(64, h*0.60, 38, h*0.61, 16, h*0.64); c.quadraticCurveTo(10, h*0.64, 14, h*0.55); c.closePath(); c.fill(); c.strokeStyle='rgba(0,0,0,.12)'; c.lineWidth=1; c.stroke();
+      // Straps
+      c.fillStyle = strap; c.strokeStyle='rgba(255,255,255,.14)';
+      if(style==='double'){
+        for(let k=0;k<2;k++){ const dy=k*8; c.beginPath(); c.moveTo(26, h*0.38+dy); c.bezierCurveTo(40, h*0.24+dy, 64, h*0.24+dy, 78, h*0.38+dy); c.lineTo(74, h*0.42+dy); c.bezierCurveTo(58, h*0.30+dy, 42, h*0.30+dy, 30, h*0.42+dy); c.closePath(); c.fill(); c.stroke(); }
+      } else {
+        c.beginPath(); c.moveTo(26, h*0.48); c.bezierCurveTo(40, h*0.24, 64, h*0.24, 78, h*0.48); c.lineTo(72, h*0.54); c.bezierCurveTo(58, h*0.32, 42, h*0.32, 30, h*0.52); c.closePath(); c.fill(); c.stroke();
+        if(style==='three'){ c.fillStyle = '#ffffff'; for(let i=0;i<3;i++){ const xx=40+i*7; c.save(); c.translate(xx,20); c.rotate(-0.5); c.fillRect(-1,20,3,14); c.restore(); } }
+      }
+      // Ailes (derrière)
+      c.save(); c.globalCompositeOperation='destination-over'; c.fillStyle='#f5f5f5'; c.strokeStyle='rgba(0,0,0,.08)'; c.lineWidth=1; c.beginPath(); c.moveTo(18,18); c.lineTo(6,10); c.lineTo(8,24); c.closePath(); c.fill(); c.stroke(); c.beginPath(); c.moveTo(86,18); c.lineTo(98,10); c.lineTo(96,24); c.closePath(); c.fill(); c.stroke(); c.restore();
+      // Étiquette
+      c.fillStyle='rgba(0,0,0,.25)'; c.fillRect(58,18,8,5);
+      return off;
+    }
+    function regenClaquette(){ CLAQUETTE = makeClaquetteSprite(SKINS[selectedSkinIndex]); }
+    regenClaquette();
+
+    function drawRotated(img, cx, cy, angle){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(angle*Math.PI/180); ctx.drawImage(img,-img.width/2,-img.height/2); ctx.restore(); }
+
+    // --- Bouteille soda (liquide noir + étiquette) ---
+    function drawBottle(x, y, h, upsideDown=false){
+      ctx.save();
+      if(upsideDown){ ctx.translate(x + BOTTLE_W/2, y + h/2); ctx.scale(1,-1); ctx.translate(-(x + BOTTLE_W/2), -(y + h/2)); }
+      const bw = BOTTLE_W; const neckH = Math.floor(h * 0.12); const bodyH = h - neckH - 8; const neckW = Math.floor(bw * 0.40); const bodyW = Math.floor(bw * 0.90);
+      // Verre
+      ctx.fillStyle = GLASS; ctx.strokeStyle = GLASS_LINE; ctx.lineWidth = 2;
+      roundRectPath(x + (bw - neckW)/2, y + 4, neckW, neckH, 6); ctx.fill(); ctx.stroke();
+      roundRectPath(x + (bw - bodyW)/2, y + 4 + neckH, bodyW, bodyH, 12); ctx.fill(); ctx.stroke();
+      // Liquide noir
+      const liquidH = Math.floor(bodyH * 0.88); ctx.fillStyle = '#0a0a0a';
+      roundRectPath(x + (bw - bodyW)/2 + 4, y + 4 + neckH + (bodyH - liquidH - 4), bodyW - 8, liquidH, 10); ctx.fill();
+      // Étiquette rouge + texte multi‑ligne
+      const labelPad = 6; const labelH = Math.max(14, Math.floor(bodyH * 0.22)); const labelW = bodyW - 16; const labelX = x + (bw - bodyW)/2 + 8; const labelY = y + 4 + neckH + Math.floor(bodyH * 0.50) - Math.floor(labelH/2);
+      ctx.fillStyle = '#d00000'; roundRectPath(labelX, labelY, labelW, labelH, 6); ctx.fill();
+      ctx.save(); roundRectPath(labelX, labelY, labelW, labelH, 6); ctx.clip();
+      const lines = ['Claquette', 'Drink']; ctx.fillStyle = WHITE; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      function fits(fs){ ctx.font = `bold ${fs}px system-ui,Arial`; const maxW = Math.max(...lines.map(t => ctx.measureText(t).width)); return maxW <= (labelW - 2*labelPad); }
+      let fontSize = Math.min(12, Math.floor(labelH / 2.1)); while(fontSize > 8 && !fits(fontSize)) fontSize--; ctx.font = `bold ${fontSize}px system-ui,Arial`;
+      const cx = labelX + labelW/2; const gap = Math.max(1, Math.floor(fontSize * 0.2)); const total = fontSize * lines.length + gap * (lines.length - 1);
+      let ty = labelY + labelH/2 - total/2 + fontSize/2; for(let i=0;i<lines.length;i++){ ctx.fillText(lines[i], cx, ty + i*(fontSize + gap)); }
+      ctx.restore();
+      ctx.restore();
+    }
+
+    // --- Entités ---
+    class Claquette {
+      constructor(){ this.x=WIDTH*0.28; this.y=HEIGHT*0.45; this.vy=0; this.angle=0; this.time=0; this.alive=true; }
+      flap(){ this.vy=FLAP; }
+      rect(){ return {x:this.x-20,y:this.y-16,w:40,h:32}; }
+      update(sim){ this.time+=sim/60; this.vy+=GRAVITY*sim; this.y+=this.vy*sim; const target=this.vy<-1?-20:Math.min(70,20+this.vy*3); this.angle+=(target-this.angle)*0.15; if(this.y<0){ this.y=0; this.vy=0; } if(this.y+18>HEIGHT-GROUND_H){ this.y=HEIGHT-GROUND_H-18; this.vy=0; this.alive=false; } }
+      draw(){ const wobble=Math.sin(this.time*12)*4; ctx.save(); ctx.globalAlpha=0.22; drawRotated(CLAQUETTE,this.x+6,this.y+10+wobble,this.angle); ctx.restore(); drawRotated(CLAQUETTE,this.x,this.y+wobble,this.angle); }
+    }
+    class BottlePair {
+      constructor(x, cfg){ this.x=x; this.passed=false; this.cfg = cfg; const gap=cfg.gapBase+randInt(-cfg.gapVar,cfg.gapVar); const marginTop=40; const marginBottom=60+GROUND_H; this.gap=gap; this.gapCenter=randInt(marginTop+gap/2, HEIGHT-marginBottom-gap/2); }
+      update(sim, cfg){ this.x -= (cfg.speed)*sim; }
+      offscreen(){ return this.x+BOTTLE_W < -10; }
+      collide(r){ const topH=this.gapCenter-this.gap/2; const top={x:this.x,y:0,w:BOTTLE_W,h:topH}; const bot={x:this.x,y:this.gapCenter+this.gap/2,w:BOTTLE_W,h:HEIGHT-(this.gapCenter+this.gap/2)}; return rectsOverlap(r,top)||rectsOverlap(r,bot); }
+      draw(){ const topH=this.gapCenter-this.gap/2; if(topH>0) drawBottle(this.x,0,topH,true); const by=this.gapCenter+this.gap/2; const bh=HEIGHT-by; drawBottle(this.x,by,bh,false); }
+    }
+
+    function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+    function rectsOverlap(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
+
+    // --- Jeu + Menu ---
+    const game={
+      state:'menu', // menu | ready | playing | gameover
+      difficulty: difficulty,
+      cfg: DIFFS[difficulty],
+      player:new Claquette(),
+      bottles:[], scroll:0, score:0,
+      best:Number(localStorage.getItem('bestClaquette')||0),
+      invincibleManual:false,
+      invincibleAutoTimer:0,
+      spawnInitial(){ this.bottles.length=0; let x=WIDTH+60; for(let i=0;i<4;i++){ this.bottles.push(new BottlePair(x, this.cfg)); x+= this.cfg.spacing; } },
+      toReady(){ this.state='ready'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; },
+      start(){ this.state='playing'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; },
+      reset(){ this.toReady(); this.scroll=0; this.invincibleManual=false; this.invincibleAutoTimer=0; },
+      gameOver(){ this.state='gameover'; const floored = Math.floor(this.score); this.best=Math.max(this.best,floored); localStorage.setItem('bestClaquette', String(this.best)); },
+    };
+
+    function unlockedCount(){ return Math.min(SKINS.length, Math.floor(game.best/10)+1); }
+    function clampSkinToUnlocked(){ if(selectedSkinIndex >= unlockedCount()) selectedSkinIndex = unlockedCount()-1; localStorage.setItem('skinIndex', String(selectedSkinIndex)); regenClaquette(); }
+    clampSkinToUnlocked();
+
+    const menuUI = { regions: [] };
+    let menuMode = 'home';
+
+    function onPress(){ if(game.state==='ready'){ game.start(); game.player.flap(); } else if(game.state==='playing'){ game.player.flap(); } else if(game.state==='gameover'){ game.reset(); } }
+
+    // --- Entrées clavier ---
+    window.addEventListener('keydown',(e)=>{
+      if(e.key===' '||e.key==='ArrowUp'){
+        e.preventDefault(); if(game.state!=='menu'){ onPress(); }
+      } else if(e.key==='r'||e.key==='R'){
+        e.preventDefault(); game.reset();
+      } else if(e.key==='s'||e.key==='S'){
+        e.preventDefault(); game.invincibleManual = !game.invincibleManual;
+      } else if(e.key==='m'||e.key==='M'){
+        e.preventDefault(); if(game.state==='menu'){ game.toReady(); } else { game.state='menu'; menuMode='home'; }
+      }
+    },{passive:false});
+
+    // --- Souris / Touch ---
+    function canvasToGame(ev){ const rect = canvas.getBoundingClientRect(); const x = (ev.clientX - rect.left) * (WIDTH / rect.width); const y = (ev.clientY - rect.top)  * (HEIGHT / rect.height); return {x,y}; }
+    canvas.addEventListener('mousedown',(ev)=>{
+      const {x,y} = canvasToGame(ev);
+      if(game.state==='menu'){
+        for(const r of menuUI.regions){ if(x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h){
+          if(r.type==='start'){ game.toReady(); }
+          else if(r.type==='gotoSkins'){ menuMode='skins'; }
+          else if(r.type==='back'){ menuMode='home'; }
+          else if(r.type==='skin' && r.unlocked){ selectedSkinIndex=r.index; localStorage.setItem('skinIndex', String(selectedSkinIndex)); regenClaquette(); }
+          else if(r.type==='diff'){ game.difficulty = r.value; localStorage.setItem('difficulty', r.value); game.cfg = DIFFS[game.difficulty]; }
+          return; } }
+      } else {
+        if(x>WIDTH-44 && y<44){ game.state='menu'; menuMode='home'; return; }
+        onPress();
+      }
+    });
+    canvas.addEventListener('touchstart',(ev)=>{
+      ev.preventDefault(); const rect = canvas.getBoundingClientRect(); const t = ev.touches[0]; if(!t) return; const x = (t.clientX - rect.left) * (WIDTH / rect.width); const y = (t.clientY - rect.top)  * (HEIGHT / rect.height);
+      if(game.state==='menu'){
+        for(const r of menuUI.regions){ if(x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h){ if(r.type==='start'){ game.toReady(); } else if(r.type==='gotoSkins'){ menuMode='skins'; } else if(r.type==='back'){ menuMode='home'; } else if(r.type==='skin' && r.unlocked){ selectedSkinIndex=r.index; localStorage.setItem('skinIndex', String(selectedSkinIndex)); regenClaquette(); } else if(r.type==='diff'){ game.difficulty=r.value; localStorage.setItem('difficulty', r.value); game.cfg = DIFFS[game.difficulty]; } return; } }
+      } else {
+        if(x>WIDTH-44 && y<44){ game.state='menu'; menuMode='home'; return; }
+        onPress();
+      }
+    },{passive:false});
+
+    // --- Boucle ---
+    let last=performance.now();
+    function loop(now){ const dt=Math.min(0.05,(now-last)/1000); last=now; const sim=dt*60; update(dt, sim); draw(); requestAnimationFrame(loop); }
+    requestAnimationFrame(loop);
+
+    function update(dt, sim){
+      game.scroll += (game.cfg? game.cfg.speed : 3.2) * sim * 0.6;
+      if(game.state!=='playing') return;
+      game.player.update(sim);
+      // auto-invincibilité (easy uniquement) si proche d'un obstacle
+      if(game.cfg.autoInvincible && !game.invincibleManual){
+        const r = game.player.rect();
+        for(const b of game.bottles){
+          const rad = game.cfg.autoInvRad;
+          const nearX = (r.x + r.w) > (b.x - rad) && r.x < (b.x + BOTTLE_W + rad);
+          const topH = b.gapCenter - b.gap/2; const botY = b.gapCenter + b.gap/2;
+          const inGap = (r.y >= topH) && ((r.y + r.h) <= botY);
+          if(nearX && !inGap){ game.invincibleAutoTimer = 0.6; break; }
+        }
+      }
+      game.invincibleAutoTimer = Math.max(0, game.invincibleAutoTimer - dt);
+      const invincibleActive = game.invincibleManual || game.invincibleAutoTimer>0;
+
+      for(const b of game.bottles) b.update(sim, game.cfg);
+      // spawn selon l'espacement de la difficulté
+      if(game.bottles.length===0 || game.bottles[game.bottles.length-1].x < WIDTH - game.cfg.spacing){ game.bottles.push(new BottlePair(WIDTH + 60, game.cfg)); }
+      game.bottles = game.bottles.filter(b=>!b.offscreen());
+      // score
+      for(const b of game.bottles){ if(!b.passed && b.x + BOTTLE_W < game.player.x){ b.passed=true; game.score += game.cfg.scorePerPass; } }
+      // collisions
+      if(!game.player.alive){ game.gameOver(); }
+      else if(!invincibleActive){ const r=game.player.rect(); for(const b of game.bottles){ if(b.collide(r)){ game.gameOver(); break; } } }
+    }
+
+    function drawBackground(){
+      const g = ctx.createLinearGradient(0,0,0,HEIGHT); g.addColorStop(0, '#d7f2ff'); g.addColorStop(1, '#bfe4ff');
+      ctx.fillStyle = g; ctx.fillRect(0,0,WIDTH,HEIGHT);
+      // nuages
+      ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.95;
+      for(let i=0;i<6;i++){
+        const cx = (i*140 - (game.scroll|0)%140);
+        const cy = 100 + (i%2)*40;
+        ctx.beginPath(); ctx.ellipse(cx, cy, 60, 23, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx+30, cy-10, 50, 20, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx+70, cy+4, 40, 17, 0, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // sol
+      ctx.fillStyle = '#a77044'; ctx.fillRect(0, HEIGHT-GROUND_H, WIDTH, GROUND_H);
+      ctx.fillStyle = '#2cb05b'; for(let i=-1;i<WIDTH/40+2;i++){ const x = (i*40 - (game.scroll|0)%40); roundRectPath(x, HEIGHT-GROUND_H, 30, 16, 6); ctx.fill(); }
+    }
+
+    function fmtScore(s){ const v = Math.round(s*10)/10; return (Math.abs(v - Math.round(v)) < 1e-6) ? String(Math.round(v)) : v.toFixed(1); }
+
+    function drawGameHUD(){
+      const inv = (game.invincibleManual || game.invincibleAutoTimer>0);
+      if(inv){ ctx.save(); ctx.globalAlpha=0.18; ctx.beginPath(); ctx.arc(game.player.x, game.player.y, 28, 0, Math.PI*2); ctx.fillStyle='#22c55e'; ctx.fill(); ctx.restore(); }
+      ctx.fillStyle='#14171a'; ctx.font='bold 24px system-ui,Arial';
+      ctx.fillText(`Score : ${fmtScore(game.score)}`,16,28); ctx.fillText(`Best : ${game.best}`,16,56);
+      // Diff
+      ctx.font='bold 14px system-ui,Arial'; ctx.fillStyle='#334155'; ctx.fillText(`Mode : ${DIFFS[game.difficulty].name}`, 16, 80);
+      if(game.cfg.autoInvincible && game.invincibleAutoTimer>0 && !game.invincibleManual){ ctx.fillStyle='#16a34a'; ctx.fillText('AUTO', 110, 80); }
+      // bouton menu
+      ctx.save(); ctx.translate(WIDTH-24, 24); ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill(); ctx.fillStyle='#ffffff'; ctx.font='bold 14px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText('M',0,5); ctx.restore();
+    }
+
+    function drawMenu(){
+      drawBackground();
+      // panneau
+      ctx.fillStyle = UI_BG; roundRectPath(24, 60, WIDTH-48, HEIGHT-120, 16); ctx.fill();
+      if(menuMode==='home'){
+        centerText('FLAPPY CLAQUETTE', 120, 28, '#ffffff');
+        centerText('Meilleur score : ' + game.best, 150, 14, UI_MUTED);
+        // boutons
+        const btnW = WIDTH-48-40, btnX = 24+20; let btnY = 190; menuUI.regions = [];
+        // Jouer
+        roundRectPath(btnX, btnY, btnW, 56, 12); ctx.fillStyle = UI_ACCENT; ctx.fill();
+        ctx.fillStyle = '#052e16'; ctx.font='bold 22px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText('JOUER', btnX + btnW/2, btnY + 36); ctx.textAlign='start';
+        menuUI.regions.push({ type:'start', x:btnX, y:btnY, w:btnW, h:56 });
+        // Skins
+        btnY += 72;
+        roundRectPath(btnX, btnY, btnW, 56, 12); ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill();
+        ctx.fillStyle = '#e5e7eb'; ctx.font='bold 18px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText('SKINS', btnX + btnW/2, btnY + 36); ctx.textAlign='start';
+        menuUI.regions.push({ type:'gotoSkins', x:btnX, y:btnY, w:btnW, h:56 });
+
+        // Sélecteur de difficulté (pills)
+        centerText('Difficulté', btnY + 76, 14, UI_MUTED);
+        const pillsY = btnY + 96; const gap = 10; const pillW = (btnW - gap*2)/3; const pillH = 36; let px = btnX;
+        const diffs = ['easy','medium','hardcore'];
+        for(const d of diffs){
+          roundRectPath(px, pillsY, pillW, pillH, 18);
+          const active = (game.difficulty===d);
+          ctx.fillStyle = active ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)'; ctx.fill();
+          ctx.fillStyle = '#e5e7eb'; ctx.font='bold 14px system-ui,Arial'; ctx.textAlign='center';
+          ctx.fillText(DIFFS[d].name.toUpperCase(), px + pillW/2, pillsY + 24); ctx.textAlign='start';
+          menuUI.regions.push({ type:'diff', value:d, x:px, y:pillsY, w:pillW, h:pillH });
+          px += pillW + gap;
+        }
+
+        centerText(`Skins débloqués : ${unlockedCount()}/${SKINS.length}  ·  palier: tous les 10 pts (best)`, HEIGHT-78, 12, UI_MUTED);
+      } else {
+        centerText('Choisis ton skin', 120, 24, '#ffffff');
+        menuUI.regions = [];
+        const cols = 3; const cellW = (WIDTH-48-40)/cols; const cellH = 92; const startX = 24+20; let x=startX, y=160;
+        const unlocked = unlockedCount();
+        for(let i=0;i<SKINS.length;i++){
+          const unlockedSkin = i < unlocked;
+          roundRectPath(x, y, cellW-12, cellH, 12); ctx.fillStyle = i===selectedSkinIndex? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.06)'; ctx.fill();
+          const thumb = makeClaquetteSprite(SKINS[i]);
+          ctx.globalAlpha = unlockedSkin ? 1 : 0.25; ctx.drawImage(thumb, x + (cellW-12)/2 - 50, y + 8); ctx.globalAlpha = 1;
+          ctx.fillStyle = unlockedSkin ? '#e5e7eb' : UI_MUTED; ctx.font = 'bold 12px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText(SKINS[i].name, x + (cellW-12)/2, y + cellH - 10); ctx.textAlign='start';
+          if(!unlockedSkin){ const need = i*10; ctx.fillStyle=UI_MUTED; ctx.font='bold 12px system-ui,Arial'; ctx.fillText(`Débloqué à ${need} pts`, x+8, y+16); }
+          menuUI.regions.push({ type:'skin', x:x, y:y, w:cellW-12, h:cellH, index:i, unlocked:unlockedSkin });
+          x += cellW; if((i+1)%cols===0){ x=startX; y+=cellH+12; }
+        }
+        // bouton retour
+        const btnW = WIDTH-48-40, btnX = 24+20, btnY = HEIGHT-120-60;
+        roundRectPath(btnX, btnY, btnW, 44, 10); ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fill();
+        ctx.fillStyle = '#e5e7eb'; ctx.font='bold 16px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText('RETOUR', btnX + btnW/2, btnY + 28); ctx.textAlign='start';
+        menuUI.regions.push({ type:'back', x:btnX, y:btnY, w:btnW, h:44 });
+        centerText(`Skins débloqués : ${unlocked}/${SKINS.length}  ·  palier: tous les 10 pts (best)`, HEIGHT-78, 12, UI_MUTED);
+      }
+    }
+
+    function draw(){
+      if(game.state==='menu'){ drawMenu(); return; }
+      drawBackground();
+      if(game.state==='playing' || game.state==='ready' || game.state==='gameover'){
+        for(const b of game.bottles) b.draw();
+        game.player.draw();
+        drawGameHUD();
+      }
+      if(game.state==='ready'){
+        centerText('Clique / Espace pour jouer', HEIGHT/2 - 20, 32, '#1f2937');
+        centerText('Appuie sur M pour le menu (skins + difficulté)', HEIGHT/2 + 18, 16, '#374151');
+      } else if(game.state==='gameover'){
+        centerText('Game Over', HEIGHT/2 - 24, 40, '#1f2937');
+        centerText('Appuie sur R (ou clique) pour rejouer  ·  M pour menu', HEIGHT/2 + 20, 16, '#374151');
+      }
+    }
+
+  })();
+  </script>
+</body>
+</html>
