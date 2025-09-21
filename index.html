@@ -24,11 +24,10 @@
 
 <script>
   // ==========================================================
-  // LIGNES MODIFIÉES POUR LA MUSIQUE
+  // LIGNES POUR LA MUSIQUE (SIMPLE)
   // ==========================================================
   const musique = document.getElementById('musique-du-jeu');
 
-  // On définit nos deux musiques
   const musiqueNiveau1 = 'musiqueFlappyClaquette.mp3';
   const musiqueNiveau2 = 'musiqueFlappyClaquette(2).mp3'; // Assure-toi que le nom du fichier est exact !
 
@@ -197,7 +196,25 @@
       invincibleManual:false,
       invincibleAutoTimer:0,
       spawnInitial(){ this.bottles.length=0; let x=WIDTH+60; for(let i=0;i<4;i++){ this.bottles.push(new BottlePair(x, this.cfg)); x+= this.cfg.spacing; } },
-      toReady(){ this.state='ready'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; premierClic = true; },
+      toReady(){
+        this.state='ready';
+        this.player=new Claquette();
+        this.cfg = DIFFS[this.difficulty];
+        this.spawnInitial();
+        this.score=0;
+        this.invincibleAutoTimer=0;
+        premierClic = true;
+
+        // ==========================================================
+        // C'EST ICI QU'ON CHOISIT LA BONNE MUSIQUE !
+        // Juste avant que le jeu ne soit prêt à démarrer.
+        // ==========================================================
+        const musiqueChoisie = game.best < 10 ? musiqueNiveau1 : musiqueNiveau2;
+        if (!musique.src || !musique.src.includes(musiqueChoisie)) {
+            musique.src = musiqueChoisie;
+        }
+        // ==========================================================
+      },
       start(){ this.state='playing'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; },
       reset(){ this.toReady(); this.scroll=0; this.invincibleManual=false; this.invincibleAutoTimer=0; },
       gameOver(){ this.state='gameover'; const floored = Math.floor(this.score); this.best=Math.max(this.best,floored); localStorage.setItem('bestClaquette', String(this.best)); },
@@ -210,33 +227,11 @@
     const menuUI = { regions: [] };
     let menuMode = 'home';
 
-    // ==========================================================
-    // NOUVELLE FONCTION POUR CHOISIR LA MUSIQUE
-    // ==========================================================
-    function choisirEtJouerMusique() {
-      // On choisit la musique en fonction du meilleur score
-      let musiqueASource = game.best < 10 ? musiqueNiveau1 : musiqueNiveau2;
-
-      // On vérifie si ce n'est pas déjà la musique qui joue pour éviter de la couper
-      // Le 'includes' est une sécurité si l'URL complète est chargée
-      if (!musique.src || !musique.src.includes(musiqueASource)) {
-        musique.src = musiqueASource;
-      }
-
-      musique.play();
-    }
-    // ==========================================================
-
-
     function onPress(){
-      // ==========================================================
-      // BLOC MODIFIÉ POUR LA MUSIQUE
-      // ==========================================================
       if (premierClic === true) {
-        choisirEtJouerMusique(); // On appelle notre nouvelle fonction
+        musique.play();
         premierClic = false;
       }
-      // ==========================================================
 
       if(game.state==='ready'){ game.start(); game.player.flap(); }
       else if(game.state==='playing'){ game.player.flap(); }
@@ -435,6 +430,7 @@
 </script>
 </body>
 </html>
+
 
 
 
