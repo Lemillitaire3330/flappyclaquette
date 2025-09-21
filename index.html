@@ -24,11 +24,17 @@
 
 <script>
   // ==========================================================
-  // LIGNES AJOUTÉES POUR LA MUSIQUE
+  // LIGNES MODIFIÉES POUR LA MUSIQUE
   // ==========================================================
   const musique = document.getElementById('musique-du-jeu');
-  let premierClic = true; // On garde ton nom de variable
+
+  // On définit nos deux musiques
+  const musiqueNiveau1 = 'musiqueFlappyClaquette.mp3';
+  const musiqueNiveau2 = 'musiqueFlappyClaquette(2).mp3'; // Assure-toi que le nom du fichier est exact !
+
+  let premierClic = true;
   // ==========================================================
+
 
   (() => {
     // --- Dimensions & physiques de base ---
@@ -191,7 +197,7 @@
       invincibleManual:false,
       invincibleAutoTimer:0,
       spawnInitial(){ this.bottles.length=0; let x=WIDTH+60; for(let i=0;i<4;i++){ this.bottles.push(new BottlePair(x, this.cfg)); x+= this.cfg.spacing; } },
-      toReady(){ this.state='ready'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; premierClic = true; }, // J'ai ajouté premierClic ici
+      toReady(){ this.state='ready'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; premierClic = true; },
       start(){ this.state='playing'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; },
       reset(){ this.toReady(); this.scroll=0; this.invincibleManual=false; this.invincibleAutoTimer=0; },
       gameOver(){ this.state='gameover'; const floored = Math.floor(this.score); this.best=Math.max(this.best,floored); localStorage.setItem('bestClaquette', String(this.best)); },
@@ -204,14 +210,30 @@
     const menuUI = { regions: [] };
     let menuMode = 'home';
 
+    // ==========================================================
+    // NOUVELLE FONCTION POUR CHOISIR LA MUSIQUE
+    // ==========================================================
+    function choisirEtJouerMusique() {
+      // On choisit la musique en fonction du meilleur score
+      let musiqueASource = game.best < 10 ? musiqueNiveau1 : musiqueNiveau2;
+
+      // On vérifie si ce n'est pas déjà la musique qui joue pour éviter de la couper
+      // Le 'includes' est une sécurité si l'URL complète est chargée
+      if (!musique.src || !musique.src.includes(musiqueASource)) {
+        musique.src = musiqueASource;
+      }
+
+      musique.play();
+    }
+    // ==========================================================
+
+
     function onPress(){
       // ==========================================================
-      // BLOC AJOUTÉ POUR LA MUSIQUE
-      // C'est le meilleur endroit, car cette fonction est appelée
-      // au premier clic pour démarrer ET pour chaque flap.
+      // BLOC MODIFIÉ POUR LA MUSIQUE
       // ==========================================================
       if (premierClic === true) {
-        musique.play();
+        choisirEtJouerMusique(); // On appelle notre nouvelle fonction
         premierClic = false;
       }
       // ==========================================================
@@ -226,13 +248,10 @@
       if(e.key===' '||e.key==='ArrowUp'){
         e.preventDefault();
         
-        // CORRECTION : On vérifie si on est dans le menu
         if(game.state==='menu'){
-          // Si oui, on prépare le jeu ET on lance tout
           game.toReady();
           onPress(); 
         } else {
-          // Sinon, on fait comme avant
           onPress();
         }
 
@@ -416,6 +435,7 @@
 </script>
 </body>
 </html>
+
 
 
 
