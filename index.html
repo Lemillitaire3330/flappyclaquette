@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <audio id="musique-du-jeu" src="musiqueFlappyClaquette.mp3" loop></audio>
+  <audio id="musique-du-jeu" src="musiqueFlappyClaquette(2).mp3" loop></audio>
   <div class="frame">
     <canvas id="game" width="420" height="720"></canvas>
     <div class="hint">Espace / clic / toucher pour sauter · <b>R</b> rejouer ·<b>M</b> menu · difficulté dans le menu <br> adresse mail officielle : flappyclaquetteofficiel@gmail.com</div>
@@ -24,16 +24,11 @@
 
 <script>
   // ==========================================================
-  // LIGNES POUR LA MUSIQUE (SIMPLE)
+  // LIGNES AJOUTÉES POUR LA MUSIQUE
   // ==========================================================
   const musique = document.getElementById('musique-du-jeu');
-
-  const musiqueNiveau1 = 'musiqueFlappyClaquette.mp3';
-  const musiqueNiveau2 = 'musiqueFlappyClaquette(2).mp3'; // Assure-toi que le nom du fichier est exact !
-
-  let premierClic = true;
+  let premierClic = true; // On garde ton nom de variable
   // ==========================================================
-
 
   (() => {
     // --- Dimensions & physiques de base ---
@@ -196,25 +191,7 @@
       invincibleManual:false,
       invincibleAutoTimer:0,
       spawnInitial(){ this.bottles.length=0; let x=WIDTH+60; for(let i=0;i<4;i++){ this.bottles.push(new BottlePair(x, this.cfg)); x+= this.cfg.spacing; } },
-      toReady(){
-        this.state='ready';
-        this.player=new Claquette();
-        this.cfg = DIFFS[this.difficulty];
-        this.spawnInitial();
-        this.score=0;
-        this.invincibleAutoTimer=0;
-        premierClic = true;
-
-        // ==========================================================
-        // C'EST ICI QU'ON CHOISIT LA BONNE MUSIQUE !
-        // Juste avant que le jeu ne soit prêt à démarrer.
-        // ==========================================================
-        const musiqueChoisie = game.best < 10 ? musiqueNiveau1 : musiqueNiveau2;
-        if (!musique.src || !musique.src.includes(musiqueChoisie)) {
-            musique.src = musiqueChoisie;
-        }
-        // ==========================================================
-      },
+      toReady(){ this.state='ready'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; premierClic = true; }, // J'ai ajouté premierClic ici
       start(){ this.state='playing'; this.player=new Claquette(); this.cfg = DIFFS[this.difficulty]; this.spawnInitial(); this.score=0; this.invincibleAutoTimer=0; },
       reset(){ this.toReady(); this.scroll=0; this.invincibleManual=false; this.invincibleAutoTimer=0; },
       gameOver(){ this.state='gameover'; const floored = Math.floor(this.score); this.best=Math.max(this.best,floored); localStorage.setItem('bestClaquette', String(this.best)); },
@@ -228,10 +205,16 @@
     let menuMode = 'home';
 
     function onPress(){
+      // ==========================================================
+      // BLOC AJOUTÉ POUR LA MUSIQUE
+      // C'est le meilleur endroit, car cette fonction est appelée
+      // au premier clic pour démarrer ET pour chaque flap.
+      // ==========================================================
       if (premierClic === true) {
         musique.play();
         premierClic = false;
       }
+      // ==========================================================
 
       if(game.state==='ready'){ game.start(); game.player.flap(); }
       else if(game.state==='playing'){ game.player.flap(); }
@@ -241,15 +224,7 @@
     // --- Entrées clavier ---
     window.addEventListener('keydown',(e)=>{
       if(e.key===' '||e.key==='ArrowUp'){
-        e.preventDefault();
-        
-        if(game.state==='menu'){
-          game.toReady();
-          onPress(); 
-        } else {
-          onPress();
-        }
-
+        e.preventDefault(); if(game.state!=='menu'){ onPress(); }
       } else if(e.key==='r'||e.key==='R'){
         e.preventDefault(); game.reset();
       } else if(e.key==='s'||e.key==='S'){
@@ -258,6 +233,7 @@
         e.preventDefault(); if(game.state==='menu'){ game.toReady(); } else { game.state='menu'; menuMode='home'; }
       }
     },{passive:false});
+
     // --- Souris / Touch ---
     function canvasToGame(ev){ const rect = canvas.getBoundingClientRect(); const x = (ev.clientX - rect.left) * (WIDTH / rect.width); const y = (ev.clientY - rect.top)  * (HEIGHT / rect.height); return {x,y}; }
     canvas.addEventListener('mousedown',(ev)=>{
@@ -430,6 +406,7 @@
 </script>
 </body>
 </html>
+
 
 
 
