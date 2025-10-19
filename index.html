@@ -28,7 +28,7 @@
   // LIGNES AJOUTÉES POUR LA MUSIQUE
   // ==========================================================
   const musique = document.getElementById('musique-du-jeu');
-  let premierClic = true; // On garde ton nom de variable
+  let premierClic = true;
   // ==========================================================
 
   (() => {
@@ -206,10 +206,6 @@
     let menuMode = 'home';
 
     function onPress(){
-      // ==========================================================
-      // BLOC AJOUTÉ POUR LA MUSIQUE
-      // C'est le meilleur endroit, car cette fonction est appelée
-      // au premier clic pour démarrer ET pour chaque flap.
       // ==========================================================
       if (premierClic === true) {
         musique.play();
@@ -407,6 +403,7 @@
 </script>
 </body>
 </html>
+
 
 
 
