@@ -161,7 +161,7 @@ if ('serviceWorker' in navigator) {
       const labelPad = 6; const labelH = Math.max(14, Math.floor(bodyH * 0.22)); const labelW = bodyW - 16; const labelX = x + (bw - bodyW)/2 + 8; const labelY = y + 4 + neckH + Math.floor(bodyH * 0.50) - Math.floor(labelH/2);
       ctx.fillStyle = '#d00000'; roundRectPath(labelX, labelY, labelW, labelH, 6); ctx.fill();
       ctx.save(); roundRectPath(labelX, labelY, labelW, labelH, 6); ctx.clip();
-      const lines = ['Coka', 'Colla']; ctx.fillStyle = WHITE; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const lines = ['Koka', 'Colla']; ctx.fillStyle = WHITE; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       function fits(fs){ ctx.font = `bold ${fs}px system-ui,Arial`; const maxW = Math.max(...lines.map(t => ctx.measureText(t).width)); return maxW <= (labelW - 2*labelPad); }
       let fontSize = Math.min(12, Math.floor(labelH / 2.1)); while(fontSize > 8 && !fits(fontSize)) fontSize--; ctx.font = `bold ${fontSize}px system-ui,Arial`;
       const cx = labelX + labelW/2; const gap = Math.max(1, Math.floor(fontSize * 0.2)); const total = fontSize * lines.length + gap * (lines.length - 1);
