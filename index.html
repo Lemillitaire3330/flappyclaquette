@@ -31,7 +31,7 @@ if ('serviceWorker' in navigator) {
           .then(reg => console.log('Service Worker enregistré !', reg))
           .catch(err => console.error('Erreur Service Worker :', err));
       });
-    }
+    }
   // ==========================================================
   // LIGNES AJOUTÉES POUR LA MUSIQUE
   // ==========================================================
@@ -97,6 +97,7 @@ if ('serviceWorker' in navigator) {
     let difficulty = ['easy','medium','hardcore'].includes(savedDiff) ? savedDiff : 'medium';
 
     // --- Skins ---
+    // Le skin n°i se débloque à i*10 points (best). Propriété optionnelle "outline" : contour de la sangle (utile pour les couleurs très claires).
     const SKINS = [
       { name:'Classique', id:'classic', strap:'#1e1e1e', foot:'#f2d3a6', sole:'#2f2f2f', style:'single' },
       { name:'Océan', id:'ocean', strap:'#0f172a', foot:'#5eead4', sole:'#1f2937', style:'single' },
@@ -106,7 +107,11 @@ if ('serviceWorker' in navigator) {
       { name:'Néon', id:'neon', strap:'#22c55e', foot:'#fef08a', sole:'#0f172a', style:'single' },
       { name:'Rose Gold', id:'rose', strap:'#f472b6', foot:'#ffe4e6', sole:'#374151', style:'single' },
       { name:'Graphite', id:'graphite', strap:'#334155', foot:'#cbd5e1', sole:'#0b1220', style:'single' },
-      { name:'Vert Foncé', id:'darkgreen', strap:'#064e3b', foot:'#a7f3d0', sole:'#052e16', style:'single' }
+      { name:'Printemps', id:'darkgreen', strap:'#064e3b', foot:'#a7f3d0', sole:'#052e16', style:'single' },
+      // --- Nouveaux skins ---
+      { name:'Hiver', id:'winter', strap:'#ffffff', foot:'#93c5fd', sole:'#5b3a1e', style:'single', outline:'#64748b' },   // 90 pts : sangle blanche (contour gris), semelle marron
+      { name:'Été', id:'summer', strap:'#eab308', foot:'#fde047', sole:'#2f2f2f', style:'single' },                          // 100 pts : jaune (semelle sombre)
+      { name:'Automne', id:'autumn', strap:'#b45309', foot:'#fcd34d', sole:'#451a03', style:'double' }                        // 110 pts : bonus
     ];
     const savedSkin = parseInt(localStorage.getItem('skinIndex') || '0', 10);
     let selectedSkinIndex = Number.isFinite(savedSkin) ? Math.max(0, Math.min(savedSkin, SKINS.length-1)) : 0;
@@ -127,7 +132,7 @@ if ('serviceWorker' in navigator) {
       // Footbed
       c.fillStyle = foot; c.beginPath(); c.moveTo(14, h*0.55); c.bezierCurveTo(34, h*0.45, 60, h*0.46, 86, h*0.44); c.bezierCurveTo(90, h*0.44, 92, h*0.50, 90, h*0.54); c.bezierCurveTo(64, h*0.60, 38, h*0.61, 16, h*0.64); c.quadraticCurveTo(10, h*0.64, 14, h*0.55); c.closePath(); c.fill(); c.strokeStyle='rgba(0,0,0,.12)'; c.lineWidth=1; c.stroke();
       // Straps
-      c.fillStyle = strap; c.strokeStyle='rgba(255,255,255,.14)';
+      c.fillStyle = strap; c.strokeStyle = skin.outline || 'rgba(255,255,255,.14)'; c.lineWidth = skin.outline ? 1.5 : 1;
       if(style==='double'){
         for(let k=0;k<2;k++){ const dy=k*8; c.beginPath(); c.moveTo(26, h*0.38+dy); c.bezierCurveTo(40, h*0.24+dy, 64, h*0.24+dy, 78, h*0.38+dy); c.lineTo(74, h*0.42+dy); c.bezierCurveTo(58, h*0.30+dy, 42, h*0.30+dy, 30, h*0.42+dy); c.closePath(); c.fill(); c.stroke(); }
       } else {
@@ -367,19 +372,20 @@ if ('serviceWorker' in navigator) {
 
         centerText(`Skins débloqués : ${unlockedCount()}/${SKINS.length}  ·  palier: tous les 10 pts (best)`, HEIGHT-78, 12, UI_MUTED);
       } else {
-        centerText('Choisis ton skin', 120, 24, '#ffffff');
+        centerText('Choisis ton skin', 110, 24, '#ffffff');
         menuUI.regions = [];
-        const cols = 3; const cellW = (WIDTH-48-40)/cols; const cellH = 92; const startX = 24+20; let x=startX, y=160;
+        // Grille compacte (4 lignes de 3) pour accueillir les 12 skins
+        const cols = 3; const cellW = (WIDTH-48-40)/cols; const cellH = 76; const rowGap = 8; const startX = 24+20; let x=startX, y=138;
         const unlocked = unlockedCount();
         for(let i=0;i<SKINS.length;i++){
           const unlockedSkin = i < unlocked;
           roundRectPath(x, y, cellW-12, cellH, 12); ctx.fillStyle = i===selectedSkinIndex? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.06)'; ctx.fill();
           const thumb = makeClaquetteSprite(SKINS[i]);
-          ctx.globalAlpha = unlockedSkin ? 1 : 0.25; ctx.drawImage(thumb, x + (cellW-12)/2 - 50, y + 8); ctx.globalAlpha = 1;
-          ctx.fillStyle = unlockedSkin ? '#e5e7eb' : UI_MUTED; ctx.font = 'bold 12px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText(SKINS[i].name, x + (cellW-12)/2, y + cellH - 10); ctx.textAlign='start';
+          ctx.globalAlpha = unlockedSkin ? 1 : 0.25; ctx.drawImage(thumb, x + (cellW-12)/2 - 50, y + 6); ctx.globalAlpha = 1;
+          ctx.fillStyle = unlockedSkin ? '#e5e7eb' : UI_MUTED; ctx.font = 'bold 12px system-ui,Arial'; ctx.textAlign='center'; ctx.fillText(SKINS[i].name, x + (cellW-12)/2, y + cellH - 8); ctx.textAlign='start';
           if(!unlockedSkin){ const need = i*10; ctx.fillStyle=UI_MUTED; ctx.font='bold 12px system-ui,Arial'; ctx.fillText(`Débloqué à ${need} pts`, x+8, y+16); }
           menuUI.regions.push({ type:'skin', x:x, y:y, w:cellW-12, h:cellH, index:i, unlocked:unlockedSkin });
-          x += cellW; if((i+1)%cols===0){ x=startX; y+=cellH+12; }
+          x += cellW; if((i+1)%cols===0){ x=startX; y+=cellH+rowGap; }
         }
         // bouton retour
         const btnW = WIDTH-48-40, btnX = 24+20, btnY = HEIGHT-120-60;
@@ -411,15 +417,3 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
